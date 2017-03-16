@@ -1,3 +1,4 @@
+import { session } from "electron"
 import { HttpError, request } from "electron-builder-http"
 import { CancellationToken } from "electron-builder-http/out/CancellationToken"
 import { GithubOptions, UpdateInfo } from "electron-builder-http/out/publishOptions"
@@ -15,16 +16,18 @@ export interface PrivateGitHubUpdateInfo extends UpdateInfo {
 export class PrivateGitHubProvider extends BaseGitHubProvider<PrivateGitHubUpdateInfo> {
   constructor(options: GithubOptions, private readonly token: string) {
     super(options, "api.github.com")
+    this.addHeadersHook()
   }
-  
+
   async getLatestVersion(): Promise<PrivateGitHubUpdateInfo> {
     const basePath = this.basePath
     const cancellationToken = new CancellationToken()
     const channelFile = getChannelFilename(getDefaultChannelName())
-    
+
     const assets = await this.getLatestVersionInfo(basePath, cancellationToken)
     const requestOptions = Object.assign({
-      headers: this.configureHeaders("application/octet-stream")
+      headers: this.configureHeaders("application/octet-stream"),
+      originalFilename: channelFile
     }, parseUrl(assets.find(it => it.name == channelFile)!.url))
     let result: any
     try {
@@ -45,13 +48,25 @@ export class PrivateGitHubProvider extends BaseGitHubProvider<PrivateGitHubUpdat
     return result
   }
 
+  private addHeadersHook(): void {
+    const { protocol, hostname } = this.baseUrl
+    const filter = {
+      urls: [`${protocol}//${hostname}${this.basePath}/*`]
+    }
+    session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details: WebRequestDetails, callback: Function) => {
+      if (!details.requestHeaders.hasOwnProperty("Authorization")) {
+        details.requestHeaders.Authorization = `token ${this.token}`
+      }
+      callback({cancel: false, requestHeaders: details.requestHeaders})
+    })
+  };
+
   private configureHeaders(accept: string) {
     return Object.assign({
-      Accept: accept,
-      Authorization: `token ${this.token}`,
+      Accept: accept
     }, this.requestHeaders)
   }
-  
+
   private async getLatestVersionInfo(basePath: string, cancellationToken: CancellationToken): Promise<Array<Asset>> {
     const requestOptions: RequestOptions = Object.assign({
       path: `${basePath}/latest`,
@@ -71,10 +86,9 @@ export class PrivateGitHubProvider extends BaseGitHubProvider<PrivateGitHubUpdat
 
   async getUpdateFile(versionInfo: PrivateGitHubUpdateInfo): Promise<FileInfo> {
     const headers = {
-      Accept: "application/octet-stream",
-      Authorization: `token ${this.token}`
+      Accept: "application/octet-stream"
     }
-    
+
     // space is not supported on GitHub
     if (getCurrentPlatform() === "darwin") {
       const info = <any>versionInfo
@@ -99,4 +113,17 @@ export class PrivateGitHubProvider extends BaseGitHubProvider<PrivateGitHubUpdat
 export interface Asset {
   name: string
   url: string
+}
+
+export interface HeaderList {
+  [key: string]: any
+}
+
+export interface WebRequestDetails {
+  id: number
+  url: string
+  method: string
+  resourceType: string
+  timestamp: number
+  requestHeaders: HeaderList
 }

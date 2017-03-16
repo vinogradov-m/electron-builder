@@ -129,7 +129,7 @@ export abstract class HttpExecutor<REQUEST_OPTS, REQUEST> {
           reject(new HttpError(response, isJson ? JSON.parse(data) : data))
         }
         else {
-          const pathname = (<any>options).pathname || options.path
+          const pathname = (<any>options).originalFilename || (<any>options).pathname || options.path
           if (data.length === 0) {
             resolve()
           }
@@ -309,7 +309,7 @@ export function dumpRequestOptions(options: RequestOptions): string {
 
 // requestOptions should be cloned already, modified in place
 function removeAuthHeader(requestOptions: RequestOptions): RequestOptions {
-  // github redirect to amazon s3 - avoid error "Only one auth mechanism allowed" 
+  // github redirect to amazon s3 - avoid error "Only one auth mechanism allowed"
   if (requestOptions.headers != null && (requestOptions.hostname || "").includes(".amazonaws.") && requestOptions.headers.Authorization != null && requestOptions.headers.Authorization.startsWith("token ")) {
     requestOptions.headers = Object.assign({}, requestOptions.headers)
     delete requestOptions.headers.Authorization
